@@ -1,2 +1,3 @@
 # spark-mllib-intro
-Introduction to Machine Learning with Apache Spark's MLlib
+
+Introduction to Machine Learning with Apache Spark's MLlib.
