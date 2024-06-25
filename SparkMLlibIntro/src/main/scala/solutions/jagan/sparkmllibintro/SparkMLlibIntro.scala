@@ -1,4 +1,4 @@
-package solutions.jagan.spark.mllib.intro
+package solutions.jagan.sparkmllibintro
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.SparkContext
