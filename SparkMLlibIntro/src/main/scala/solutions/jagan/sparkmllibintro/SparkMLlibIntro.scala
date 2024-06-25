@@ -3,6 +3,10 @@ package solutions.jagan.sparkmllibintro
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
+import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.stat.Statistics
+import org.apache.spark.rdd.RDD
 
 case class Flower(species: String)
 
@@ -13,7 +17,7 @@ object SparkMLlibIntro {
   val conf: SparkConf = new SparkConf().setAppName(objectName).setMaster(master)
   val sc: SparkContext = new SparkContext(conf)
 
-  private def readData(fileName: String): Array[(List[Double], Int)] = {
+  private def readData(fileName: String) = {
 
     val data = sc.textFile(fileName)
 
@@ -32,18 +36,17 @@ object SparkMLlibIntro {
           case Flower("Iris-virginica") => 2
           case _ => -1
         }
-        (inputElements, speciesAsNumber)
+        Vectors.dense(inputElements.toArray :+ speciesAsNumber.toDouble)
       }
     }
   }
 
-  private def printlPreprocessedInputData(rows: Array[(List[Double], Int)]): Unit = {
+  private def printlPreprocessedInputData(rows: Array[Vector]): Unit = {
 
     println("Preprocessed input data:\n")
     rows.foreach { row =>
       print("specimen: ")
-      row._1.foreach(elem => print(s"$elem, "))
-      print(s"${row._2}")
+      row.toArray.foreach(elem => print(s"$elem, "))
       println
     }
 
@@ -57,7 +60,24 @@ object SparkMLlibIntro {
     val rows = readData(inputFilename)
     printlPreprocessedInputData(rows)
 
+    val rowsAsRdd = sc.parallelize(rows)
+    performExploratoryDataAnalysis(rowsAsRdd)
+
+
     println
+  }
+
+  private def performExploratoryDataAnalysis(data: RDD[Vector]): Unit = {
+
+    val summary = Statistics.colStats(data)
+
+    println("Summary mean:")
+    println(summary.mean)
+    println("Summary variance:")
+    println(summary.variance)
+    println("Summary non-zero:")
+    println(summary.numNonzeros)
+
   }
 
 }
