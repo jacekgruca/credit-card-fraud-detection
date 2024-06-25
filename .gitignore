@@ -3,3 +3,5 @@ README.html
 SparkMLlibIntro/target
 SparkMLlibIntro/project
 SparkMLlibIntro/.bsp
+spark-submit.sh
+execute.sh
