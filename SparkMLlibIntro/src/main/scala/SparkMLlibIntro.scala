@@ -8,23 +8,20 @@ case class Flower(species: String)
 
 // the following code is based on this article: https://www.baeldung.com/spark-mlib-machine-learning
 object SparkMLlibIntro {
-  def main(args: Array[String]): Unit = {
+  val master = "local[2]"
+  val objectName: String = this.getClass.getSimpleName.stripSuffix("$")
+  val conf: SparkConf = new SparkConf().setAppName(objectName).setMaster(master)
+  val sc: SparkContext = new SparkContext(conf)
 
-    val conf = new SparkConf().setAppName("SparkMLlibIntro").setMaster("local[2]")
-    val sc = new SparkContext(conf)
+  private def readData(fileName: String): Array[(List[Double], Int)] = {
 
-    println()
-    println("JAG: SparkMLlibIntro")
-    println()
-
-    val inputFile = "src/main/resources/iris/iris.data"
-    val data = sc.textFile(inputFile)
+    val data = sc.textFile(fileName)
 
     println("Raw input data:\n")
     data.collect().foreach(println)
     println
 
-    val rows = data.collect().map {
+    data.collect().map {
       case line: String if line.split(",").length > 1 => {
         val splitLine = line.split(",")
         val inputElements = List(splitLine(0), splitLine(1), splitLine(2), splitLine(3)).map { elem => elem.toDouble }
@@ -38,6 +35,9 @@ object SparkMLlibIntro {
         (inputElements, speciesAsNumber)
       }
     }
+  }
+
+  private def printlPreprocessedInputData(rows: Array[(List[Double], Int)]): Unit = {
 
     println("Preprocessed input data:\n")
     rows.foreach { row =>
@@ -47,6 +47,17 @@ object SparkMLlibIntro {
       println
     }
 
+  }
+
+  def main(args: Array[String]): Unit = {
+
+    println(s"\nJAG: $objectName\n")
+
+    val inputFilename = "src/main/resources/iris/iris.data"
+    val rows = readData(inputFilename)
+    printlPreprocessedInputData(rows)
+
     println
   }
+
 }
