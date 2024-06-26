@@ -1,10 +1,9 @@
 package solutions.jagan.sparkmllibintro
 
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
-import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
+import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.stat.Statistics
 import org.apache.spark.rdd.RDD
 
@@ -16,6 +15,7 @@ object SparkMLlibIntro {
   val objectName: String = this.getClass.getSimpleName.stripSuffix("$")
   val conf: SparkConf = new SparkConf().setAppName(objectName).setMaster(master)
   val sc: SparkContext = new SparkContext(conf)
+  val inputFilename = "src/main/resources/iris/iris.data"
 
   private def readData(fileName: String) = {
 
@@ -41,14 +41,10 @@ object SparkMLlibIntro {
     }
   }
 
-  private def printlPreprocessedInputData(rows: Array[Vector]): Unit = {
+  private def printlLabeledData(points: RDD[LabeledPoint]): Unit = {
 
-    println("Preprocessed input data:\n")
-    rows.foreach { row =>
-      print("specimen: ")
-      row.toArray.foreach(elem => print(s"$elem, "))
-      println
-    }
+    println("Labeled input data:\n")
+    points.collect().foreach(println)
 
   }
 
@@ -56,20 +52,23 @@ object SparkMLlibIntro {
 
     println(s"\nJAG: $objectName\n")
 
-    val inputFilename = "src/main/resources/iris/iris.data"
     val rows = readData(inputFilename)
-    printlPreprocessedInputData(rows)
+    performExploratoryDataAnalysis(rows)
 
-    val rowsAsRdd = sc.parallelize(rows)
-    performExploratoryDataAnalysis(rowsAsRdd)
-
+    val labeledData = sc.parallelize {
+      rows.map { row =>
+        LabeledPoint(row(4), Vectors.dense(row.toArray.slice(0, 4)))
+      }
+    }
+    printlLabeledData(labeledData)
 
     println
+    sc.stop()
   }
 
-  private def performExploratoryDataAnalysis(data: RDD[Vector]): Unit = {
+  private def performExploratoryDataAnalysis(data: Array[Vector]): Unit = {
 
-    val summary = Statistics.colStats(data)
+    val summary = Statistics.colStats(sc.parallelize(data))
 
     println("Summary mean:")
     println(summary.mean)
