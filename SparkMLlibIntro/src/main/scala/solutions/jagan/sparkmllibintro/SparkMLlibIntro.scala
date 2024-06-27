@@ -2,6 +2,8 @@ package solutions.jagan.sparkmllibintro
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
+import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
+import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.stat.Statistics
@@ -16,6 +18,27 @@ object SparkMLlibIntro {
   val conf: SparkConf = new SparkConf().setAppName(objectName).setMaster(master)
   val sc: SparkContext = new SparkContext(conf)
   val inputFilename = "src/main/resources/iris/iris.data"
+  val seed = 11L
+  val noOfClasses = 3
+
+  def main(args: Array[String]): Unit = {
+
+    println(s"\nJAG: $objectName\n")
+
+    val (rowsNoLabels, rowsWithLabels) = readData(inputFilename)
+    val labeledData = getLabeledData(rowsWithLabels)
+
+    printlLabeledData(labeledData)
+    performExploratoryDataAnalysis(rowsNoLabels)
+    displayCorrelationMatrix(rowsNoLabels)
+
+    val (trainingData, testData) = splitData(labeledData, seed)
+    val metrics = performTraining(trainingData, testData, noOfClasses)
+    displayMetrics(metrics)
+
+    println
+    sc.stop()
+  }
 
   private def readData(fileName: String) = {
 
@@ -82,19 +105,33 @@ object SparkMLlibIntro {
 
   }
 
-  def main(args: Array[String]): Unit = {
+  private def displayMetrics(metrics: MulticlassMetrics): Unit = {
 
-    println(s"\nJAG: $objectName\n")
+    println("Model accuracy on test data: " + metrics.accuracy)
+    println(s"Confusion matrix:\n${metrics.confusionMatrix}")
+    println(s"Precision: ${metrics.weightedPrecision}")
+    println(s"Recall: ${metrics.weightedRecall}")
+    println(s"F1 Score: ${metrics.weightedFMeasure}")
 
-    val (rowsNoLabels, rowsWithLabels) = readData(inputFilename)
-    val labeledData = getLabeledData(rowsWithLabels)
+  }
 
-    printlLabeledData(labeledData)
-    performExploratoryDataAnalysis(rowsNoLabels)
-    displayCorrelationMatrix(rowsNoLabels)
+  private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint],
+                              i: Int): MulticlassMetrics = {
 
-    println
-    sc.stop()
+    val model = new LogisticRegressionWithLBFGS().setNumClasses(i).run(trainingData);
+    val predictionAndLabels = testData.map(p => (model.predict(p.features), p.label))
+    val metrics = new MulticlassMetrics(predictionAndLabels)
+
+    metrics
+  }
+
+  private def splitData(labeledData: RDD[LabeledPoint], seed: Long): (RDD[LabeledPoint], RDD[LabeledPoint]) = {
+
+    val splits = labeledData.randomSplit(Array(0.8, 0.2), seed)
+    val trainingData = splits(0)
+    val testData = splits(1)
+
+    (trainingData, testData)
   }
 
 }
