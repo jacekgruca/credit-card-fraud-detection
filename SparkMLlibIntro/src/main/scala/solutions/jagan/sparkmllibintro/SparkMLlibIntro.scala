@@ -25,8 +25,8 @@ object SparkMLlibIntro {
     data.collect().foreach(println)
     println
 
-    data.collect().map {
-      case line: String if line.split(",").length > 1 => {
+    val rows = data.collect().map {
+      case line: String if line.split(",").length > 1 =>
         val splitLine = line.split(",")
         val inputElements = List(splitLine(0), splitLine(1), splitLine(2), splitLine(3)).map { elem => elem.toDouble }
         val species = Flower(splitLine(4))
@@ -36,9 +36,11 @@ object SparkMLlibIntro {
           case Flower("Iris-virginica") => 2
           case _ => -1
         }
-        Vectors.dense(inputElements.toArray :+ speciesAsNumber.toDouble)
-      }
+        (Vectors.dense(inputElements.toArray), Vectors.dense(inputElements.toArray :+ speciesAsNumber.toDouble))
     }
+    val rowsNoLabels = rows.map(_._1)
+    val rowsWithLabels = rows.map(_._2)
+    (rowsNoLabels, rowsWithLabels)
   }
 
   private def printlLabeledData(points: RDD[LabeledPoint]): Unit = {
@@ -48,22 +50,23 @@ object SparkMLlibIntro {
 
   }
 
-  def main(args: Array[String]): Unit = {
+  private def getLabeledData(rows: Array[Vector]): RDD[LabeledPoint] = {
 
-    println(s"\nJAG: $objectName\n")
-
-    val rows = readData(inputFilename)
-    performExploratoryDataAnalysis(rows)
-
-    val labeledData = sc.parallelize {
+    sc.parallelize {
       rows.map { row =>
         LabeledPoint(row(4), Vectors.dense(row.toArray.slice(0, 4)))
       }
     }
-    printlLabeledData(labeledData)
 
-    println
-    sc.stop()
+  }
+
+  private def displayCorrelationMatrix(rowsWithoutLabel: Array[Vector]): Unit = {
+
+    val correlMatrix = Statistics.corr(sc.parallelize(rowsWithoutLabel), "pearson")
+
+    println("Correlation matrix:")
+    println(correlMatrix.toString)
+
   }
 
   private def performExploratoryDataAnalysis(data: Array[Vector]): Unit = {
@@ -77,6 +80,21 @@ object SparkMLlibIntro {
     println("Summary non-zero:")
     println(summary.numNonzeros)
 
+  }
+
+  def main(args: Array[String]): Unit = {
+
+    println(s"\nJAG: $objectName\n")
+
+    val (rowsNoLabels, rowsWithLabels) = readData(inputFilename)
+    val labeledData = getLabeledData(rowsWithLabels)
+
+    printlLabeledData(labeledData)
+    performExploratoryDataAnalysis(rowsNoLabels)
+    displayCorrelationMatrix(rowsNoLabels)
+
+    println
+    sc.stop()
   }
 
 }
