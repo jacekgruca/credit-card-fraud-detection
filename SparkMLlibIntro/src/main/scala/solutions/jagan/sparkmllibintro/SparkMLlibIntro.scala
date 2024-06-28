@@ -1,15 +1,16 @@
 package solutions.jagan.sparkmllibintro
 
-import org.apache.spark.SparkContext
-import org.apache.spark.SparkConf
 import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.stat.Statistics
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
+import scala.util.Random
 
-case class Flower(species: String)
+private case class Flower(species: String)
 
 // the following code is based on this article: https://www.baeldung.com/spark-mlib-machine-learning
 object SparkMLlibIntro {
@@ -18,7 +19,7 @@ object SparkMLlibIntro {
   val conf: SparkConf = new SparkConf().setAppName(objectName).setMaster(master)
   val sc: SparkContext = new SparkContext(conf)
   val inputFilename = "src/main/resources/iris/iris.data"
-  val seed = 11L
+  val seed = new Random().nextLong()
   val noOfClasses = 3
 
   def main(args: Array[String]): Unit = {
@@ -116,9 +117,9 @@ object SparkMLlibIntro {
   }
 
   private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint],
-                              i: Int): MulticlassMetrics = {
+                              numClasses: Int): MulticlassMetrics = {
 
-    val model = new LogisticRegressionWithLBFGS().setNumClasses(i).run(trainingData);
+    val model = new LogisticRegressionWithLBFGS().setNumClasses(numClasses).run(trainingData);
     val predictionAndLabels = testData.map(p => (model.predict(p.features), p.label))
     val metrics = new MulticlassMetrics(predictionAndLabels)
 
