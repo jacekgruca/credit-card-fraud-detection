@@ -17,8 +17,8 @@ private case class Flower(species: String)
 
 // the following code is based on this article: https://www.baeldung.com/spark-mlib-machine-learning
 object SparkMLlibIntro {
-  private val master = "local[2]"
-  private val objectName: String = this.getClass.getSimpleName.stripSuffix("$")
+  private val master = "local"
+  private val objectName = this.getClass.getSimpleName.stripSuffix("$")
   private val conf = new SparkConf().setAppName(objectName).setMaster(master)
   private val sc = new SparkContext(conf)
   private val inputFilename = "src/main/resources/iris/iris.data"
@@ -148,7 +148,7 @@ object SparkMLlibIntro {
   private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint],
                               numClasses: Int): (LogisticRegressionModel, MulticlassMetrics) = {
 
-    val model = new LogisticRegressionWithLBFGS().setNumClasses(numClasses).run(trainingData);
+    val model = new LogisticRegressionWithLBFGS().setNumClasses(numClasses).run(trainingData)
     val predictionAndLabels = testData.map(p => (model.predict(p.features), p.label))
     val metrics = new MulticlassMetrics(predictionAndLabels)
 
