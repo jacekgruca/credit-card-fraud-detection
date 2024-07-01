@@ -15,7 +15,6 @@ import scala.util.Random
 
 private case class Flower(species: String)
 
-// the following code is based on this article: https://www.baeldung.com/spark-mlib-machine-learning
 object SparkMLlibIntro {
   private val master = "local"
   private val objectName = this.getClass.getSimpleName.stripSuffix("$")
