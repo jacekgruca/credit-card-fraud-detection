@@ -1,6 +1,6 @@
 package solutions.jagan.sparkmllibintro
 
-import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
+import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
@@ -8,19 +8,23 @@ import org.apache.spark.mllib.stat.Statistics
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
+
+import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
 import scala.util.Random
 
 private case class Flower(species: String)
 
 // the following code is based on this article: https://www.baeldung.com/spark-mlib-machine-learning
 object SparkMLlibIntro {
-  val master = "local[2]"
-  val objectName: String = this.getClass.getSimpleName.stripSuffix("$")
-  val conf: SparkConf = new SparkConf().setAppName(objectName).setMaster(master)
-  val sc: SparkContext = new SparkContext(conf)
-  val inputFilename = "src/main/resources/iris/iris.data"
-  val seed = new Random().nextLong()
-  val noOfClasses = 3
+  private val master = "local[2]"
+  private val objectName: String = this.getClass.getSimpleName.stripSuffix("$")
+  private val conf = new SparkConf().setAppName(objectName).setMaster(master)
+  private val sc = new SparkContext(conf)
+  private val inputFilename = "src/main/resources/iris/iris.data"
+  private val seed = new Random().nextLong()
+  private val noOfClasses = 3
+  private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")
 
   def main(args: Array[String]): Unit = {
 
@@ -34,11 +38,41 @@ object SparkMLlibIntro {
     displayCorrelationMatrix(rowsNoLabels)
 
     val (trainingData, testData) = splitData(labeledData, seed)
-    val metrics = performTraining(trainingData, testData, noOfClasses)
+    val (model, metrics) = performTraining(trainingData, testData, noOfClasses)
     displayMetrics(metrics)
+    val reloadedModel = reloadModel(model)
+    val newData = Vectors.dense(Array[Double](1, 1, 1, 1))
+    val prediction = reloadedModel.predict(newData)
+    println(s"Reloaded model prediction on new data ${newData} = " + getSpeciesAsName(prediction).species + ".")
 
     println
     sc.stop()
+  }
+
+  private def getSpeciesAsName(prediction: Double) = {
+    prediction.toInt match {
+      case 0 => Flower("Iris-setosa")
+      case 1 => Flower("Iris-versicolor")
+      case 2 => Flower("Iris-virginica")
+      case other => throw new MatchError(s"Prediction ($other) didn't match any of the known iris species.")
+    }
+  }
+
+  private def getSpeciesAsNumber(species: Flower) = {
+    species match {
+      case Flower("Iris-setosa") => 0
+      case Flower("Iris-versicolor") => 1
+      case Flower("Iris-virginica") => 2
+      case other => throw new MatchError(s"Iris species name (${other.species}) unknown.")
+    }
+  }
+
+  private def reloadModel(model: LogisticRegressionModel) = {
+
+    val pathToModel = "model/LR_" + LocalDateTime.now.format(formatter)
+    model.save(sc, pathToModel)
+    LogisticRegressionModel.load(sc, pathToModel)
+
   }
 
   private def readData(fileName: String) = {
@@ -54,12 +88,7 @@ object SparkMLlibIntro {
         val splitLine = line.split(",")
         val inputElements = List(splitLine(0), splitLine(1), splitLine(2), splitLine(3)).map { elem => elem.toDouble }
         val species = Flower(splitLine(4))
-        val speciesAsNumber: Int = species match {
-          case Flower("Iris-setosa") => 0
-          case Flower("Iris-versicolor") => 1
-          case Flower("Iris-virginica") => 2
-          case _ => -1
-        }
+        val speciesAsNumber: Int = getSpeciesAsNumber(species)
         (Vectors.dense(inputElements.toArray), Vectors.dense(inputElements.toArray :+ speciesAsNumber.toDouble))
     }
     val rowsNoLabels = rows.map(_._1)
@@ -117,13 +146,13 @@ object SparkMLlibIntro {
   }
 
   private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint],
-                              numClasses: Int): MulticlassMetrics = {
+                              numClasses: Int): (LogisticRegressionModel, MulticlassMetrics) = {
 
     val model = new LogisticRegressionWithLBFGS().setNumClasses(numClasses).run(trainingData);
     val predictionAndLabels = testData.map(p => (model.predict(p.features), p.label))
     val metrics = new MulticlassMetrics(predictionAndLabels)
 
-    metrics
+    (model, metrics)
   }
 
   private def splitData(labeledData: RDD[LabeledPoint], seed: Long): (RDD[LabeledPoint], RDD[LabeledPoint]) = {
