@@ -1,4 +1,4 @@
-# spark-mllib-intro
+# credit-card-fraud-classification
 
 Introduction to Machine Learning with Apache Spark's MLlib.
 
