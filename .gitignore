@@ -1,9 +1,9 @@
 .idea
 README.html
-SparkMLlibIntro/target
-SparkMLlibIntro/project
-SparkMLlibIntro/.bsp
+CreditCardFraudClassifier/target
+CreditCardFraudClassifier/project
+CreditCardFraudClassifier/.bsp
 submit.sh
 execute.sh
-SparkMLlibIntro/model/
-credit-card-fraud-detection/
+CreditCardFraudClassifier/model/
+datasets/

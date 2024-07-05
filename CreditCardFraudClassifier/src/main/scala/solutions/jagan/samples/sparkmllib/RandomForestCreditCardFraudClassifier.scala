@@ -1,4 +1,4 @@
-package solutions.jagan.sparkmllibintro
+package solutions.jagan.samples.sparkmllib
 
 import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.mllib.tree.model.RandomForestModel
@@ -14,7 +14,7 @@ import java.time.format.DateTimeFormatter
 import java.time.LocalDateTime
 import scala.util.Random
 
-object SparkMLlibIntro {
+object RandomForestCreditCardFraudClassifier {
   // this is the Kaggle Credit Card Fraud Detection dataset: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
   private val inputFilename = "../datasets/credit-card-fraud-detection/creditcard-small.csv"
   private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")
