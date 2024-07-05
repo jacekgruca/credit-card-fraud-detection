@@ -1,7 +1,7 @@
 package solutions.jagan.sparkmllibintro
 
 import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
-import org.apache.spark.mllib.evaluation.MulticlassMetrics
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.stat.Statistics
@@ -13,17 +13,17 @@ import java.time.format.DateTimeFormatter
 import java.time.LocalDateTime
 import scala.util.Random
 
-private case class Flower(species: String)
-
 object SparkMLlibIntro {
-  private val master = "local"
+  // this is the Kaggle Credit Card Fraud Detection dataset: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
+  private val inputFilename = "../datasets/credit-card-fraud-detection/creditcard-small.csv"
+  private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")
+  private val master = "local[100]"
+  private val numClasses = 2
+
   private val objectName = this.getClass.getSimpleName.stripSuffix("$")
   private val conf = new SparkConf().setAppName(objectName).setMaster(master)
   private val sc = new SparkContext(conf)
-  private val inputFilename = "src/main/resources/iris/iris.data"
   private val seed = new Random().nextLong()
-  private val noOfClasses = 3
-  private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")
 
   def main(args: Array[String]): Unit = {
 
@@ -31,44 +31,33 @@ object SparkMLlibIntro {
 
     val (rowsNoLabels, rowsWithLabels) = readData(inputFilename)
     val labeledData = getLabeledData(rowsWithLabels)
-
     printlLabeledData(labeledData)
+
     performExploratoryDataAnalysis(rowsNoLabels)
     displayCorrelationMatrix(rowsNoLabels)
 
     val (trainingData, testData) = splitData(labeledData, seed)
-    val (model, metrics) = performTraining(trainingData, testData, noOfClasses)
+    val (model, metrics) = performTraining(trainingData, testData, numClasses)
     displayMetrics(metrics)
     val reloadedModel = reloadModel(model)
-    val newData = Vectors.dense(Array[Double](1, 1, 1, 1))
-    val prediction = reloadedModel.predict(newData)
-    println(s"Reloaded model prediction on new data ${newData} = " + getSpeciesAsName(prediction).species + ".")
+    demonstrateReloadedModel(reloadedModel)
 
-    println
     sc.stop()
   }
 
-  private def getSpeciesAsName(prediction: Double) = {
-    prediction.toInt match {
-      case 0 => Flower("Iris-setosa")
-      case 1 => Flower("Iris-versicolor")
-      case 2 => Flower("Iris-virginica")
-      case other => throw new MatchError(s"Prediction ($other) didn't match any of the known iris species.")
-    }
-  }
+  private def demonstrateReloadedModel(reloadedModel: LogisticRegressionModel) = {
 
-  private def getSpeciesAsNumber(species: Flower) = {
-    species match {
-      case Flower("Iris-setosa") => 0
-      case Flower("Iris-versicolor") => 1
-      case Flower("Iris-virginica") => 2
-      case other => throw new MatchError(s"Iris species name (${other.species}) unknown.")
-    }
+    val newData: Array[Double] = Array(1.0) ++ Array.fill(28)(1.0) ++ Array(1.0)
+    val newDataAsVector = Vectors.dense(newData)
+    val prediction = reloadedModel.predict(newDataAsVector)
+
+    println(s"\nReloaded model prediction on new data ${newDataAsVector} = " + prediction + ".")
+
   }
 
   private def reloadModel(model: LogisticRegressionModel) = {
 
-    val pathToModel = "model/LR_" + LocalDateTime.now.format(formatter)
+    val pathToModel = "model/CCFD_LR_" + LocalDateTime.now.format(formatter)
     model.save(sc, pathToModel)
     LogisticRegressionModel.load(sc, pathToModel)
 
@@ -76,19 +65,15 @@ object SparkMLlibIntro {
 
   private def readData(fileName: String) = {
 
-    val data = sc.textFile(fileName)
+    // data obtained from the file with the header row skipped
+    val data = sc.textFile(fileName).zipWithIndex.filter { case (_, index) => index != 0 }.map(_._1)
 
-    println("Raw input data:\n")
-    data.collect().foreach(println)
-    println
-
-    val rows = data.collect().map {
+    val rows = data.collect.map {
       case line: String if line.split(",").length > 1 =>
         val splitLine = line.split(",")
-        val inputElements = List(splitLine(0), splitLine(1), splitLine(2), splitLine(3)).map { elem => elem.toDouble }
-        val species = Flower(splitLine(4))
-        val speciesAsNumber: Int = getSpeciesAsNumber(species)
-        (Vectors.dense(inputElements.toArray), Vectors.dense(inputElements.toArray :+ speciesAsNumber.toDouble))
+        val inputElements = splitLine.slice(0, 30).map { elem => elem.toDouble }
+        val fraudClass: Int = splitLine(30).replace("\"", "").toInt
+        (Vectors.dense(inputElements), Vectors.dense(inputElements :+ fraudClass.toDouble))
     }
     val rowsNoLabels = rows.map(_._1)
     val rowsWithLabels = rows.map(_._2)
@@ -97,8 +82,19 @@ object SparkMLlibIntro {
 
   private def printlLabeledData(points: RDD[LabeledPoint]): Unit = {
 
-    println("Labeled input data:\n")
-    points.collect().foreach(println)
+    println("Top 50 rows of labeled input data:\n")
+    points.take(50).foreach(println)
+    println
+
+    //wydrukować, ile jest pozytywnych, ile negatywnych, a potem prawdopodobieństwa (threshold) dla LR
+
+    val fraudulentCount = points.filter(_.getLabel > 0.0).count()
+    val totalCount = points.count()
+    val legitimateCount = totalCount - fraudulentCount
+    println("legitimateCount = " + legitimateCount)
+    println("fraudulentCount = " + fraudulentCount)
+    println("totalCount = " + totalCount)
+    println
 
   }
 
@@ -106,7 +102,7 @@ object SparkMLlibIntro {
 
     sc.parallelize {
       rows.map { row =>
-        LabeledPoint(row(4), Vectors.dense(row.toArray.slice(0, 4)))
+        LabeledPoint(row(30), Vectors.dense(row.toArray.slice(0, 30)))
       }
     }
 
@@ -116,8 +112,10 @@ object SparkMLlibIntro {
 
     val correlMatrix = Statistics.corr(sc.parallelize(rowsWithoutLabel), "pearson")
 
+    println
     println("Correlation matrix:")
     println(correlMatrix.toString)
+    println
 
   }
 
@@ -127,29 +125,50 @@ object SparkMLlibIntro {
 
     println("Summary mean:")
     println(summary.mean)
+    println
     println("Summary variance:")
     println(summary.variance)
+    println
     println("Summary non-zero:")
     println(summary.numNonzeros)
+    println
 
   }
 
-  private def displayMetrics(metrics: MulticlassMetrics): Unit = {
+  private def displayMetrics(metrics: BinaryClassificationMetrics): Unit = {
 
-    println("Model accuracy on test data: " + metrics.accuracy)
-    println(s"Confusion matrix:\n${metrics.confusionMatrix}")
-    println(s"Precision: ${metrics.weightedPrecision}")
-    println(s"Recall: ${metrics.weightedRecall}")
-    println(s"F1 Score: ${metrics.weightedFMeasure}")
+    println
+
+    // Precision by threshold
+    val precision = metrics.pr
+    precision.foreach { case (t, p) =>
+      println(s"Threshold: $t, Precision: $p")
+    }
+
+    // Recall by threshold
+    val recall = metrics.recallByThreshold
+    recall.foreach { case (t, r) =>
+      println(s"Threshold: $t, Recall: $r")
+    }
+
+    // F-measure
+    val f1Score = metrics.fMeasureByThreshold
+    f1Score.foreach { case (t, f) =>
+      println(s"Threshold: $t, F-score: $f, Beta = 1")
+    }
+
+    // AUPRC
+    val auPRC = metrics.areaUnderPR
+    println("Area under precision-recall curve = " + auPRC)
 
   }
 
   private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint],
-                              numClasses: Int): (LogisticRegressionModel, MulticlassMetrics) = {
+                              numClasses: Int): (LogisticRegressionModel, BinaryClassificationMetrics) = {
 
     val model = new LogisticRegressionWithLBFGS().setNumClasses(numClasses).run(trainingData)
     val predictionAndLabels = testData.map(p => (model.predict(p.features), p.label))
-    val metrics = new MulticlassMetrics(predictionAndLabels)
+    val metrics = new BinaryClassificationMetrics(predictionAndLabels)
 
     (model, metrics)
   }
