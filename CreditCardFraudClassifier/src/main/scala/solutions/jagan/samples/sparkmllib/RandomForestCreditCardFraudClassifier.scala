@@ -2,32 +2,44 @@ package solutions.jagan.samples.sparkmllib
 
 import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.mllib.tree.model.RandomForestModel
-import org.apache.spark.mllib.tree.RandomForest
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.tree.RandomForest
 import org.apache.spark.mllib.stat.Statistics
+
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
 
 import java.time.format.DateTimeFormatter
 import java.time.LocalDateTime
 import scala.util.Random
 
+
+/**
+ * This object contains all logic necessary to demonstrate the detection of fraudulent credit card transactions.
+ * It utilizes the Random Forest classification method available in the Apache Spark framework.
+ */
 object RandomForestCreditCardFraudClassifier {
   // this is the Kaggle Credit Card Fraud Detection dataset: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
-  private val inputFilename = "../datasets/credit-card-fraud-detection/creditcard-small.csv"
+  private val inputFilename = "../datasets/credit-card-fraud-detection/creditcard-full.csv"
   private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")
+  private val seed = new Random().nextLong()
   private val noOfInputColumns = 30
+  // this master value has been adjusted so that a single task on this dataset is less or equal to 1000 KiB
   private val master = "local[128]"
+  // this is a binary classification problem (each transaction is either fraudulent or not),
+  // so the number of classes is 2
   private val numClasses = 2
 
+  // objectName holds "RandomForestCreditCardFraudClassifier"
   private val objectName = this.getClass.getSimpleName.stripSuffix("$")
-  private val conf = new SparkConf().setAppName(objectName).setMaster(master)
-  private val sc = new SparkContext(conf)
-  private val seed = new Random().nextLong()
+  private var sc: SparkContext = _
 
   def main(args: Array[String]): Unit = {
+
+    val spark = SparkSession.builder.appName(objectName).master(master).getOrCreate()
+    sc = spark.sparkContext
 
     println(s"\n$objectName\n")
 
@@ -45,7 +57,7 @@ object RandomForestCreditCardFraudClassifier {
     val reloadedModel = reloadModel(model)
     demonstrateReloadedModel(reloadedModel)
 
-    sc.stop()
+    spark.stop()
   }
 
   private def demonstrateReloadedModel(reloadedModel: RandomForestModel) = {
@@ -54,10 +66,11 @@ object RandomForestCreditCardFraudClassifier {
     val newDataAsVector = Vectors.dense(newData)
     val prediction = reloadedModel.predict(newDataAsVector)
 
-    println(s"\nReloaded model prediction on new data ${newDataAsVector} = " + prediction + ".")
+    println(s"\nreloaded model prediction on new data ${newDataAsVector} = " + prediction)
 
   }
 
+  // this method persists the model to a location on the hard drive and loads the persisted model back
   private def reloadModel(model: RandomForestModel) = {
 
     val pathToModel = "model/CCFD_RF_" + LocalDateTime.now.format(formatter)
@@ -71,6 +84,9 @@ object RandomForestCreditCardFraudClassifier {
     // data obtained from the file with the header row skipped
     val data = sc.textFile(fileName).zipWithIndex.filter { case (_, index) => index != 0 }.map(_._1)
 
+    // this logic processes all dataset lines and places the input columns of each in the first element of the tuple and
+    // the input columns plus label (fraudClass) in the second element on the tuple; this way we can operate on both
+    // labeled and unlabeled data
     val rows = data.collect.map {
       case line: String if line.split(",").length > 1 =>
         val splitLine = line.split(",")
@@ -89,11 +105,10 @@ object RandomForestCreditCardFraudClassifier {
     points.take(50).foreach(println)
     println
 
-    //wydrukować, ile jest pozytywnych, ile negatywnych, a potem prawdopodobieństwa (threshold) dla LR
-
     val fraudulentCount = points.filter(_.getLabel > 0.0).count()
     val totalCount = points.count()
     val legitimateCount = totalCount - fraudulentCount
+
     println("legitimateCount = " + legitimateCount)
     println("fraudulentCount = " + fraudulentCount)
     println("totalCount = " + totalCount)
@@ -116,7 +131,7 @@ object RandomForestCreditCardFraudClassifier {
     val correlMatrix = Statistics.corr(sc.parallelize(rowsWithoutLabel), "pearson")
 
     println
-    println("Correlation matrix:")
+    println("correlation matrix: ")
     println(correlMatrix.toString)
     println
 
@@ -126,13 +141,13 @@ object RandomForestCreditCardFraudClassifier {
 
     val summary = Statistics.colStats(sc.parallelize(data))
 
-    println("Summary mean:")
+    println("summary mean: ")
     println(summary.mean)
     println
-    println("Summary variance:")
+    println("summary variance: ")
     println(summary.variance)
     println
-    println("Summary non-zero:")
+    println("summary non-zero: ")
     println(summary.numNonzeros)
     println
 
@@ -176,6 +191,7 @@ object RandomForestCreditCardFraudClassifier {
   private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint], numClasses: Int):
   (RandomForestModel, RDD[(Double, Double)], BinaryClassificationMetrics) = {
 
+    // the following are the parameters of the training model
     val categoricalFeaturesInfo = Map[Int, Int]()
     val numTrees = 100
     val featureSubsetStrategy = "auto"
@@ -195,6 +211,7 @@ object RandomForestCreditCardFraudClassifier {
 
   private def splitData(labeledData: RDD[LabeledPoint], seed: Long): (RDD[LabeledPoint], RDD[LabeledPoint]) = {
 
+    // our split of data is 70% to 30%
     val splits = labeledData.randomSplit(Array(0.7, 0.3), seed)
     val trainingData = splits(0)
     val testData = splits(1)
