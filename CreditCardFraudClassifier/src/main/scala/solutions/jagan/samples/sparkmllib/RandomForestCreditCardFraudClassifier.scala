@@ -19,7 +19,7 @@ object RandomForestCreditCardFraudClassifier {
   private val inputFilename = "../datasets/credit-card-fraud-detection/creditcard-small.csv"
   private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")
   private val noOfInputColumns = 30
-  private val master = "local[64]"
+  private val master = "local[128]"
   private val numClasses = 2
 
   private val objectName = this.getClass.getSimpleName.stripSuffix("$")
@@ -29,7 +29,7 @@ object RandomForestCreditCardFraudClassifier {
 
   def main(args: Array[String]): Unit = {
 
-    println(s"\nJAG: $objectName\n")
+    println(s"\n$objectName\n")
 
     val (rowsNoLabels, rowsWithLabels) = readData(inputFilename)
     val labeledData = getLabeledData(rowsWithLabels)
@@ -39,8 +39,8 @@ object RandomForestCreditCardFraudClassifier {
     displayCorrelationMatrix(rowsNoLabels)
 
     val (trainingData, testData) = splitData(labeledData, seed)
-    val (model, metrics) = performTraining(trainingData, testData, numClasses)
-    displayMetrics(metrics)
+    val (model, predictions, metrics) = performTraining(trainingData, testData, numClasses)
+    displayMetrics(predictions, metrics)
 
     val reloadedModel = reloadModel(model)
     demonstrateReloadedModel(reloadedModel)
@@ -138,36 +138,44 @@ object RandomForestCreditCardFraudClassifier {
 
   }
 
-  private def displayMetrics(metrics: BinaryClassificationMetrics): Unit = {
+  private def displayMetrics(predictions: RDD[(Double, Double)], metrics: BinaryClassificationMetrics):
+  Unit = {
 
-    // precision by threshold
-    val precision = metrics.precisionByThreshold
-    precision.foreach { case (t, p) =>
-      println(s"threshold: $t, precision: $p")
-    }
+    val truePositives = predictions.filter {
+      case (prediction, label) => prediction == 1.0 && label == 1.0
+    }.count()
 
-    // recall by threshold
-    val recall = metrics.recallByThreshold
-    recall.foreach { case (t, r) =>
-      println(s"threshold: $t, recall: $r")
-    }
+    val trueNegatives = predictions.filter {
+      case (prediction, label) => prediction == 0.0 && label == 0.0
+    }.count()
 
-    // f-measure
-    val fScore = metrics.fMeasureByThreshold
-    fScore.foreach { case (t, f) =>
-      println(s"threshold: $t, f-score: $f, beta = 1")
-    }
+    val falsePositives = predictions.filter {
+      case (prediction, label) => prediction == 1.0 && label == 0.0
+    }.count()
+
+    val falseNegatives = predictions.filter {
+      case (prediction, label) => prediction == 0.0 && label == 1.0
+    }.count()
+
+    println(s"true positives: $truePositives")
+    println(s"true negatives: $trueNegatives")
+    println(s"false positives: $falsePositives")
+    println(s"false negatives: $falseNegatives")
+
+    val precision = truePositives.toDouble / (truePositives + falsePositives)
+    val recall = truePositives.toDouble / (truePositives + falseNegatives)
 
     println
+    println("precision: " + precision)
+    println("recall: " + recall)
     println(s"area under precision-recall curve (AUPRC) = ${metrics.areaUnderPR}")
     println(s"area under receiver operating characteristic (AUROC) = ${metrics.areaUnderROC}")
 
   }
 
-  private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint],
-                              numClasses: Int): (RandomForestModel, BinaryClassificationMetrics) = {
+  private def performTraining(trainingData: RDD[LabeledPoint], testData: RDD[LabeledPoint], numClasses: Int):
+  (RandomForestModel, RDD[(Double, Double)], BinaryClassificationMetrics) = {
 
-    val numClasses = 2
     val categoricalFeaturesInfo = Map[Int, Int]()
     val numTrees = 100
     val featureSubsetStrategy = "auto"
@@ -179,10 +187,10 @@ object RandomForestCreditCardFraudClassifier {
       trainingData, numClasses, categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins
     )
 
-    val predictionAndLabels = testData.map(p => (model.predict(p.features), p.label))
-    val metrics = new BinaryClassificationMetrics(predictionAndLabels)
+    val predictions = testData.map(p => (model.predict(p.features), p.label))
+    val metrics = new BinaryClassificationMetrics(predictions)
 
-    (model, metrics)
+    (model, predictions, metrics)
   }
 
   private def splitData(labeledData: RDD[LabeledPoint], seed: Long): (RDD[LabeledPoint], RDD[LabeledPoint]) = {
