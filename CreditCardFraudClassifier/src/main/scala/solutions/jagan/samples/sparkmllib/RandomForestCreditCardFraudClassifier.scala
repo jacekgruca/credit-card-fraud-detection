@@ -126,9 +126,9 @@ object RandomForestCreditCardFraudClassifier {
 
   }
 
-  private def displayCorrelationMatrix(rowsWithoutLabel: Array[Vector]): Unit = {
+  private def displayCorrelationMatrix(rowsWithoutLabels: Array[Vector]): Unit = {
 
-    val correlMatrix = Statistics.corr(sc.parallelize(rowsWithoutLabel), "pearson")
+    val correlMatrix = Statistics.corr(sc.parallelize(rowsWithoutLabels), "pearson")
 
     println
     println("correlation matrix: ")
