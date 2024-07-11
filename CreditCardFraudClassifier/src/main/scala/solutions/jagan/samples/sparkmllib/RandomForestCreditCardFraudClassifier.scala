@@ -27,7 +27,7 @@ object RandomForestCreditCardFraudClassifier {
   private val seed = new Random().nextLong()
   private val noOfInputColumns = 30
   // this master value has been adjusted so that a single task on this dataset is less or equal to 1000 KiB
-  private val master = "local[128]"
+  private val master = "local[80]"
   // this is a binary classification problem (each transaction is either fraudulent or not),
   // so the number of classes is 2
   private val numClasses = 2
