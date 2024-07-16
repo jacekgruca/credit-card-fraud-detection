@@ -6,19 +6,18 @@ import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.RandomForest
 import org.apache.spark.mllib.stat.Statistics
-
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
 import java.time.format.DateTimeFormatter
+import scala.util.matching.Regex
 import java.time.LocalDateTime
 import scala.util.Random
 
-
 /**
  * This object contains all logic necessary to demonstrate the detection of fraudulent credit card transactions.
- * It utilizes the Random Forest classification method available in the Apache Spark framework.
+ * It utilizes the Random Forest classification method available in the Apache Spark framework's MLlib library.
  */
 object RandomForestCreditCardFraudClassifier {
   // this is the Kaggle Credit Card Fraud Detection dataset: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
@@ -60,13 +59,13 @@ object RandomForestCreditCardFraudClassifier {
     spark.stop()
   }
 
-  private def demonstrateReloadedModel(reloadedModel: RandomForestModel) = {
+  private def demonstrateReloadedModel(reloadedModel: RandomForestModel): Unit = {
 
     val newData: Array[Double] = Array(34628.0) ++ Array.fill(noOfInputColumns - 2)(1.0) ++ Array(8.44)
     val newDataAsVector = Vectors.dense(newData)
     val prediction = reloadedModel.predict(newDataAsVector)
 
-    println(s"\nreloaded model prediction on new data ${newDataAsVector} = " + prediction)
+    println(s"\nreloaded model prediction on new data $newDataAsVector = " + prediction)
 
   }
 
@@ -87,15 +86,23 @@ object RandomForestCreditCardFraudClassifier {
     // this logic processes all dataset lines and places the input columns of each in the first element of the tuple and
     // the input columns plus label (fraudClass) in the second element on the tuple; this way we can operate on both
     // labeled and unlabeled data
-    val rows = data.collect.map {
-      case line: String if line.split(",").length > 1 =>
-        val splitLine = line.split(",")
-        val inputElements = splitLine.slice(0, noOfInputColumns).map { elem => elem.toDouble }
-        val fraudClass: Int = splitLine(noOfInputColumns).replace("\"", "").toInt
-        (Vectors.dense(inputElements), Vectors.dense(inputElements :+ fraudClass.toDouble))
+    val integerRegex = """-?\d+([eE][-+]?\d+)?"""
+    val doubleRegex = """-?\d+(\.\d+)?([eE][-+]?\d+)?"""
+    val classRegex = s"""\"$doubleRegex\""""
+    val pattern: Regex = new Regex(integerRegex + "," + (doubleRegex + ",") * (noOfInputColumns - 1) + classRegex)
+    val rowsWithLabels = data.map {
+      line =>
+        line.replaceAll("\\s", "") match {
+          case pattern(_*) =>
+            val splitLine = line.split(",")
+            val inputElements = splitLine.slice(0, noOfInputColumns).map(elem => elem.toDouble)
+            val fraudClass: Int = splitLine(noOfInputColumns).replace("\"", "").toInt
+            Vectors.dense(inputElements :+ fraudClass.toDouble)
+          case l => throw new IllegalArgumentException(s"$line is not valid input.")
+        }
     }
-    val rowsNoLabels = rows.map(_._1)
-    val rowsWithLabels = rows.map(_._2)
+    val rowsNoLabels = rowsWithLabels.map(row => Vectors.dense(row.toArray.dropRight(1)))
+
     (rowsNoLabels, rowsWithLabels)
   }
 
@@ -116,19 +123,17 @@ object RandomForestCreditCardFraudClassifier {
 
   }
 
-  private def getLabeledData(rows: Array[Vector]): RDD[LabeledPoint] = {
+  private def getLabeledData(rowsWithLabels: RDD[Vector]): RDD[LabeledPoint] = {
 
-    sc.parallelize {
-      rows.map { row =>
-        LabeledPoint(row(noOfInputColumns), Vectors.dense(row.toArray.slice(0, noOfInputColumns)))
-      }
+    rowsWithLabels.map { row =>
+      LabeledPoint(row(noOfInputColumns), Vectors.dense(row.toArray.slice(0, noOfInputColumns)))
     }
 
   }
 
-  private def displayCorrelationMatrix(rowsWithoutLabels: Array[Vector]): Unit = {
+  private def displayCorrelationMatrix(rowsNoLabels: RDD[Vector]): Unit = {
 
-    val correlMatrix = Statistics.corr(sc.parallelize(rowsWithoutLabels), "pearson")
+    val correlMatrix = Statistics.corr(rowsNoLabels, "pearson")
 
     println
     println("correlation matrix: ")
@@ -137,9 +142,9 @@ object RandomForestCreditCardFraudClassifier {
 
   }
 
-  private def performExploratoryDataAnalysis(data: Array[Vector]): Unit = {
+  private def performExploratoryDataAnalysis(rowsNoLabels: RDD[Vector]): Unit = {
 
-    val summary = Statistics.colStats(sc.parallelize(data))
+    val summary = Statistics.colStats(rowsNoLabels)
 
     println("summary mean: ")
     println(summary.mean)
