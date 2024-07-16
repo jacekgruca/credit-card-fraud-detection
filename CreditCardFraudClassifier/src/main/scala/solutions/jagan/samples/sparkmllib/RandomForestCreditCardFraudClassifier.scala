@@ -144,22 +144,21 @@ object RandomForestCreditCardFraudClassifier {
 
   private def performExploratoryDataAnalysis(rowsNoLabels: RDD[Vector]): Unit = {
 
-    val summary = Statistics.colStats(rowsNoLabels)
+    val colStats = Statistics.colStats(rowsNoLabels)
 
-    println("summary mean: ")
-    println(summary.mean)
+    println("stats mean: ")
+    println(colStats.mean)
     println
-    println("summary variance: ")
-    println(summary.variance)
+    println("stats variance: ")
+    println(colStats.variance)
     println
-    println("summary non-zero: ")
-    println(summary.numNonzeros)
+    println("stats non-zero: ")
+    println(colStats.numNonzeros)
     println
 
   }
 
-  private def displayMetrics(predictions: RDD[(Double, Double)], metrics: BinaryClassificationMetrics):
-  Unit = {
+  private def displayMetrics(predictions: RDD[(Double, Double)], metrics: BinaryClassificationMetrics): Unit = {
 
     val truePositives = predictions.filter {
       case (prediction, label) => prediction == 1.0 && label == 1.0
