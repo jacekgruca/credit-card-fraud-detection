@@ -187,6 +187,8 @@ object RandomForestCreditCardFraudClassifier {
     println
     println("precision: " + precision)
     println("recall: " + recall)
+    val fScore = 2 * precision * recall / (precision + recall)
+    println("F-score: " + fScore)
     println(s"area under precision-recall curve (AUPRC) = ${metrics.areaUnderPR}")
     println(s"area under receiver operating characteristic (AUROC) = ${metrics.areaUnderROC}")
 
