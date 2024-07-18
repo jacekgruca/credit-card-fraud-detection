@@ -8,9 +8,33 @@ Our dataset of choice is Kaggle's [Credit Card Fraud Detection collection](https
 
 ## Code overview
 
+### Configure build
+
+Our Spark version used for this demonstration is 3.5.1 and our Scala version is 2.12.19, as shown in the following sbt configuration. You can view it and the remainder of the code [on GitHub](https://github.com/jacekgruca/credit-card-fraud-detection).
+
+```scala
+version := "0.1.0-SNAPSHOT"
+scalaVersion := "2.12.19"
+
+val sparkVersion = "3.5.1"
+libraryDependencies ++= Seq(
+  "org.apache.spark" %% "spark-core" % sparkVersion,
+  "org.apache.spark" %% "spark-sql" % sparkVersion,
+  "org.apache.spark" %% "spark-mllib" % sparkVersion,
+)
+```
+
+In order to run the following example, [get sbt](https://www.scala-sbt.org/download), [get Spark](https://spark.apache.org/downloads.html) and execute:
+```console
+sbt package
+/your/path/to/spark/bin/spark-submit --class solutions.jagan.samples.sparkmllib.RandomForestCreditCardFraudClassifier target/scala-2.12/creditcardfraudclassifier_2.12-0.1.0-SNAPSHOT.jar
+```
+
+The command might differ slightly depending on the operating system. This version was tested on macOS.
+
 ### Initialize Spark
 
-Our Spark version used for this demonstration was 3.5.1 and our Scala version was 2.12.19 (see file `build.sbt` [on GitHub](https://github.com/jacekgruca/credit-card-fraud-detection)). Let's start with Spark initialization:
+Our project leverages Apache Spark. To get started, we first need to initialize it:
 
 ```scala
 object RandomForestCreditCardFraudClassifier {
@@ -36,24 +60,24 @@ The name of our object is RandomForestCreditCardFraudClassifier, because we will
 Our further call is to read data, which is carried out by the following lines of code. All that the first line does is skip the header.
 
 ```scala
-    val data = sc.textFile(fileName).zipWithIndex.filter { case (_, index) => index != 0 }.map(_._1)
+val data = sc.textFile(fileName).zipWithIndex.filter { case (_, index) => index != 0 }.map(_._1)
 
-    val integerRegex = """-?\d+([eE][-+]?\d+)?"""
-    val doubleRegex = """-?\d+(\.\d+)?([eE][-+]?\d+)?"""
-    val classRegex = s"""\"$doubleRegex\""""
-    val pattern: Regex = new Regex(integerRegex + "," + (doubleRegex + ",") * (noOfInputColumns - 1) + classRegex)
-    val rowsWithLabels = data.map {
-      line =>
-        line.replaceAll("\\s", "") match {
-          case pattern(_*) =>
-            val splitLine = line.split(",")
-            val inputElements = splitLine.slice(0, noOfInputColumns).map(elem => elem.toDouble)
-            val fraudClass: Int = splitLine(noOfInputColumns).replace("\"", "").toInt
-            Vectors.dense(inputElements :+ fraudClass.toDouble)
-          case l => throw new IllegalArgumentException(s"$line is not valid input.")
-        }
+val integerRegex = """-?\d+([eE][-+]?\d+)?"""
+val doubleRegex = """-?\d+(\.\d+)?([eE][-+]?\d+)?"""
+val classRegex = s"""\"$doubleRegex\""""
+val pattern: Regex = new Regex(integerRegex + "," + (doubleRegex + ",") * (noOfInputColumns - 1) + classRegex)
+val rowsWithLabels = data.map {
+  line =>
+    line.replaceAll("\\s", "") match {
+      case pattern(_*) =>
+        val splitLine = line.split(",")
+        val inputElements = splitLine.slice(0, noOfInputColumns).map(elem => elem.toDouble)
+        val fraudClass: Int = splitLine(noOfInputColumns).replace("\"", "").toInt
+        Vectors.dense(inputElements :+ fraudClass.toDouble)
+      case l => throw new IllegalArgumentException(s"$line is not valid input.")
     }
-    val rowsNoLabels = rowsWithLabels.map(row => Vectors.dense(row.toArray.dropRight(1)))
+}
+val rowsNoLabels = rowsWithLabels.map(row => Vectors.dense(row.toArray.dropRight(1)))
 ```
 
 As you can see, we use regular expressions to validate the input. Parsing, however, is done by simple splitting on commas, as the format is pretty straightforward (once we know the data follows it).
@@ -61,28 +85,28 @@ As you can see, we use regular expressions to validate the input. Parsing, howev
 Now that we have read in our data, it's time to create a `LabeledPoint` for each of the labeled transactions. This is needed because Spark's MLlib API utilizes the `LabeledPoint` class to train the model.
 
 ```scala
-    val points = rowsWithLabels.map { row =>
-      LabeledPoint(row(noOfInputColumns), Vectors.dense(row.toArray.slice(0, noOfInputColumns)))
-    }
+val points = rowsWithLabels.map { row =>
+  LabeledPoint(row(noOfInputColumns), Vectors.dense(row.toArray.slice(0, noOfInputColumns)))
+}
 ```
 
 All `rowsNoLabels`, `rowsWithLabels`, and now `points` are instances of the RDD class. We decided to use RDD for this short intro, because RDDs ([Resilient Distributed Datasets](https://spark.apache.org/docs/latest/rdd-programming-guide.html#resilient-distributed-datasets-rdds)) are the foundation of Spark's distributed computing model and provide a simple way to understand the core concepts of working with data in Spark.
 
-### Print data
+### Print a sample and a summary
 
 Now that we have our data in the RDD format, we can print the top 50 rows and provide some statistics about the dataset. In the full collection we deal with 284 807 transactions, of which 492 were fraudulent. The following code prints all of this information.
 
 ```scala
-    println("Top 50 rows of labeled input data:\n")
-    points.take(50).foreach(println)
+println("Top 50 rows of labeled input data:\n")
+points.take(50).foreach(println)
 
-    val fraudulentCount = points.filter(_.getLabel > 0.0).count()
-    val totalCount = points.count()
-    val legitimateCount = totalCount - fraudulentCount
+val fraudulentCount = points.filter(_.getLabel > 0.0).count()
+val totalCount = points.count()
+val legitimateCount = totalCount - fraudulentCount
 
-    println("legitimateCount = " + legitimateCount)
-    println("fraudulentCount = " + fraudulentCount)
-    println("totalCount = " + totalCount)
+println("legitimateCount = " + legitimateCount)
+println("fraudulentCount = " + fraudulentCount)
+println("totalCount = " + totalCount)
 ```
 
 ### Perform data analysis
@@ -90,14 +114,14 @@ Now that we have our data in the RDD format, we can print the top 50 rows and pr
 As an exercise, we can perform some exploratory data analysis, just to see what Spark MLlib is made of.
 
 ```scala
-    val colStats = Statistics.colStats(rowsNoLabels)
+val colStats = Statistics.colStats(rowsNoLabels)
 
-    println("stats mean: ")
-    println(colStats.mean)
-    println("stats variance: ")
-    println(colStats.variance)
-    println("stats non-zero: ")
-    println(colStats.numNonzeros)
+println("stats mean: ")
+println(colStats.mean)
+println("stats variance: ")
+println(colStats.variance)
+println("stats non-zero: ")
+println(colStats.numNonzeros)
 ```
 
 ### Print correlation matrix
@@ -105,10 +129,10 @@ As an exercise, we can perform some exploratory data analysis, just to see what 
 The following code prints the correlation matrix, which is a great source of information for the Machine Learning Engineer. However, as this is a toolset exploration article, we will skip in-depth analysis of the matrix and just demonstrate that it is possible to obtain it with Spark MLlib.
 
 ```scala
-    val correlMatrix = Statistics.corr(rowsNoLabels, "pearson")
+val correlMatrix = Statistics.corr(rowsNoLabels, "pearson")
 
-    println("correlation matrix: ")
-    println(correlMatrix.toString)
+println("correlation matrix: ")
+println(correlMatrix.toString)
 ```
 
 ### Split data
@@ -116,9 +140,9 @@ The following code prints the correlation matrix, which is a great source of inf
 As discussed in various other articles, the dataset needs to be split into subsets, typically training, cross-validation and testing datasets. For this simple example, we'll skip cross-validation and focus on the training dataset, which will comprise 70% of the input data and the testing dataset, which will comprise the remainder of the input data. 
 
 ```scala
-    val splits = labeledData.randomSplit(Array(0.7, 0.3), seed)
-    val trainingData = splits(0)
-    val testData = splits(1)
+val splits = labeledData.randomSplit(Array(0.7, 0.3), seed)
+val trainingData = splits(0)
+val testData = splits(1)
 ```
 
 ### Train model
@@ -126,19 +150,19 @@ As discussed in various other articles, the dataset needs to be split into subse
 The time has come to perform model training. This is done with the following piece of code:
 
 ```scala
-    val categoricalFeaturesInfo = Map[Int, Int]()
-    val numTrees = 100
-    val featureSubsetStrategy = "auto"
-    val impurity = "gini"
-    val maxDepth = 4
-    val maxBins = 32
+val categoricalFeaturesInfo = Map[Int, Int]()
+val numTrees = 100
+val featureSubsetStrategy = "auto"
+val impurity = "gini"
+val maxDepth = 4
+val maxBins = 32
 
-    val model: RandomForestModel = RandomForest.trainClassifier(
-      trainingData, numClasses, categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins
-    )
+val model: RandomForestModel = RandomForest.trainClassifier(
+  trainingData, numClasses, categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins
+)
 
-    val predictions = testData.map(p => (model.predict(p.features), p.label))
-    val metrics = new BinaryClassificationMetrics(predictions)
+val predictions = testData.map(p => (model.predict(p.features), p.label))
+val metrics = new BinaryClassificationMetrics(predictions)
 ```
 
 We're training the Random Forest classifier. At the beginning various training configuration is set, the details of which is beyond the scope of this tutorial. Next, we call the `trainClassifier` method and obtain a trained model. Lastly, we carry out the predictions on the test dataset and, based on them, we have our metrics created as BinaryClassificationMetrics (the Fraud Detection problem is, after all, a binary classification problem).
@@ -148,37 +172,37 @@ We're training the Random Forest classifier. At the beginning various training c
 Last but not least, we display our metrics. In Fraud Detection, certain performance metrics are particularly crucial to ensure the reliability of the model. Recall is vital because it measures the model's ability to identify actual fraudulent cases. High recall indicates that the model successfully detects most of the fraud instances, minimizing false negatives. Precision, on the other hand, assesses the accuracy of the positive predictions. High precision means that most of the transactions flagged as fraudulent are indeed fraudulent, reducing false positives. Recall and precision are computed based on then number of true positives, true negatives, false positives, and false negatives. The F-score, which combines precision and recall, provides a balanced measure of the model's accuracy. The most important item is the area under precision-recall curve (AUPRC) metric as recommended by the dataset authors. We also compute the area under receiver operating characteristic (AUROC), which is another balanced metric for Fraud Detection. For more details on these metrics see this [MLOps Blog post](https://neptune.ai/blog/f1-score-accuracy-roc-auc-pr-auc).
 
 ```scala
-    val truePositives = predictions.filter {
-      case (prediction, label) => prediction == 1.0 && label == 1.0
-    }.count()
+val truePositives = predictions.filter {
+  case (prediction, label) => prediction == 1.0 && label == 1.0
+}.count()
 
-    val trueNegatives = predictions.filter {
-      case (prediction, label) => prediction == 0.0 && label == 0.0
-    }.count()
+val trueNegatives = predictions.filter {
+  case (prediction, label) => prediction == 0.0 && label == 0.0
+}.count()
 
-    val falsePositives = predictions.filter {
-      case (prediction, label) => prediction == 1.0 && label == 0.0
-    }.count()
+val falsePositives = predictions.filter {
+  case (prediction, label) => prediction == 1.0 && label == 0.0
+}.count()
 
-    val falseNegatives = predictions.filter {
-      case (prediction, label) => prediction == 0.0 && label == 1.0
-    }.count()
+val falseNegatives = predictions.filter {
+  case (prediction, label) => prediction == 0.0 && label == 1.0
+}.count()
 
-    println(s"true positives: $truePositives")
-    println(s"true negatives: $trueNegatives")
-    println(s"false positives: $falsePositives")
-    println(s"false negatives: $falseNegatives")
+println(s"true positives: $truePositives")
+println(s"true negatives: $trueNegatives")
+println(s"false positives: $falsePositives")
+println(s"false negatives: $falseNegatives")
 
-    val precision = truePositives.toDouble / (truePositives + falsePositives)
-    val recall = truePositives.toDouble / (truePositives + falseNegatives)
+val precision = truePositives.toDouble / (truePositives + falsePositives)
+val recall = truePositives.toDouble / (truePositives + falseNegatives)
 
-    println
-    println("precision: " + precision)
-    println("recall: " + recall)
-    val fScore = 2 * precision * recall / (precision + recall)
-    println("F-score: " + fScore)
-    println(s"area under precision-recall curve (AUPRC) = ${metrics.areaUnderPR}")
-    println(s"area under receiver operating characteristic (AUROC) = ${metrics.areaUnderROC}")
+println
+println("precision: " + precision)
+println("recall: " + recall)
+val fScore = 2 * precision * recall / (precision + recall)
+println("F-score: " + fScore)
+println(s"area under precision-recall curve (AUPRC) = ${metrics.areaUnderPR}")
+println(s"area under receiver operating characteristic (AUROC) = ${metrics.areaUnderROC}")
 ```
 
 ### Persist and load the model
@@ -186,17 +210,17 @@ Last but not least, we display our metrics. In Fraud Detection, certain performa
 Lastly, the following lines of code persist the model to a location on the hard drive and then load it back. Afterwards, the reloaded model is called to make a prediction on some dummy data, just to demonstrate the reload cycle is possible and returns plausible results.
 
 ```scala
-    val pathToModel = "model/CCFD_RF_" + LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS"))
-    model.save(sc, pathToModel)
-    val reloadedModel = RandomForestModel.load(sc, pathToModel)
-    
-    val newData: Array[Double] = Array(34628.0) ++ Array.fill(noOfInputColumns - 2)(1.0) ++ Array(8.44)
-    val newDataAsVector = Vectors.dense(newData)
-    val prediction = reloadedModel.predict(newDataAsVector)
+val pathToModel = "model/CCFD_RF_" + LocalDateTime.now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS"))
+model.save(sc, pathToModel)
+val reloadedModel = RandomForestModel.load(sc, pathToModel)
 
-    println(s"\nreloaded model prediction on new data ${newDataAsVector} = " + prediction)
+val newData: Array[Double] = Array(34628.0) ++ Array.fill(noOfInputColumns - 2)(1.0) ++ Array(8.44)
+val newDataAsVector = Vectors.dense(newData)
+val prediction = reloadedModel.predict(newDataAsVector)
 
-    spark.stop()
+println(s"\nreloaded model prediction on new data ${newDataAsVector} = " + prediction)
+
+spark.stop()
 ```
 
 This concludes our example, so we called the Spark stop() method.
@@ -274,7 +298,7 @@ area under receiver operating characteristic (AUROC) = 0.8764433074283456
 reloaded model prediction on new data [34628.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,8.44] = 0.0
 ```
 
-As shown, the area under precision-recall curve (AUPRC) for this execution is roughly 77%. This is pretty good by most standards! With further parameter tuning and a larger dataset, production grade metrics may be achieved.
+As shown, the area under precision-recall curve (AUPRC) for this execution is roughly 77%. That's pretty good by most standards! With further parameter tuning and a larger dataset, production grade metrics may be achieved.
 
 ## Conclusions and comparison with TensorFlow
 
