@@ -1,9 +1,11 @@
-.idea
+build-html.sh
 README.html
-CreditCardFraudClassifier/target
-CreditCardFraudClassifier/project
-CreditCardFraudClassifier/.bsp
-submit.sh
 execute.sh
-CreditCardFraudClassifier/model/
+submit.sh
 datasets/
+
+.idea
+CreditCardFraudClassifier/.bsp/
+CreditCardFraudClassifier/target/
+CreditCardFraudClassifier/project/
+CreditCardFraudClassifier/model/
